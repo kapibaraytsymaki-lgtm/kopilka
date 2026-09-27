@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Копилка</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    max-width: 600px;
+    margin: 30px auto;
+    padding: 0 15px;
+  }
+  h1 { color: #38bdf8; text-align: center; }
+  h2 { color: #a78bfa; margin-top: 24px; }
+  input, button {
+    width: 100%;
+    padding: 10px;
+    margin: 6px 0;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: #e2e8f0;
+    font-size: 16px;
+    box-sizing: border-box;
+  }
+  button {
+    background: #38bdf8;
+    color: #0f172a;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+  }
+  button:hover { background: #a78bfa; }
+  .hidden { display: none; }
+
+  .progress-bar {
+    height: 16px;
+    background: #1e293b;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid #334155;
+    margin: 10px 0;
+  }
+  #progressFill {
+    height: 100%;
+    width: 0%;
+    background: #38bdf8;
+    transition: width 0.4s;
+  }
+  #goalPhoto img {
+    width: 100%;
+    border-radius: 12px 12px 0 0;
+    display: block;
+  }
+  #goalPhoto .caption {
+    padding: 10px;
+    background: #1e293b;
+    border-radius: 0 0 12px 12px;
+    color: #94a3b8;
+    font-style: italic;
+    margin-bottom: 16px;
+  }
+  .history-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #1e293b;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+  .history-item .add { color: #34d399; font-weight: bold; }
+  .history-item .sub { color: #f87171; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>Моя копилка</h1>
+
+<div id="authScreen">
+  <h2>Вход</h2>
+  <input id="loginUser" placeholder="Логин">
+  <input id="loginPass" type="password" placeholder="Пароль">
+  <button onclick="doLogin()">Войти</button>
+
+  <h2>Регистрация</h2>
+  <input id="regUser" placeholder="Логин">
+  <input id="regPass" type="password" placeholder="Пароль">
+  <button onclick="doRegister()">Зарегистрироваться</button>
+  <button onclick="resetAll()" style="background:#f87171;color:white">Сбросить всех пользователей</button>
+</div>
+
+<div id="goalScreen" class="hidden">
+  <p>Привет, <span id="whoUser"></span>! <button onclick="doLogout()">Выйти</button></p>
+
+  <div id="goalForm">
+    <h2>Создать цель</h2>
+    <input id="title" type="text" placeholder="На что копишь?">
+    <input id="target" type="number" placeholder="Целевая сумма ₽">
+    <input id="photo" type="file" accept="image/*">
+    <input id="caption" placeholder="Подпись к фото">
+    <button onclick="createGoal()">Создать копилку</button>
+  </div>
+
+  <div id="goalView" class="hidden">
+    <div id="goalPhoto"></div>
+    <h2 id="goalTitle"></h2>
+    <p>Накоплено: <b id="savedAmount"></b> из <b id="targetAmount"></b></p>
+    <div class="progress-bar"><div id="progressFill"></div></div>
+    <p id="remaining"></p>
+
+    <input id="opAmount" type="number" placeholder="Сумма ₽">
+    <button onclick="addMoney()" style="background:#34d399;color:#062e1f">Пополнить</button>
+    <button onclick="subMoney()" style="background:#f87171;color:#fff">Вычти</button>
+
+    <h2>История</h2>
+    <div id="historyList"></div>
+
+    <button onclick="resetGoal()" style="background:transparent;color:#94a3b8;border:1px solid #334155;margin-top:20px">Удалить копилку</button>
+  </div>
+</div>
+
+<script>
+var currentUser = null;
+
+function loadUsers() {
+  return JSON.parse(localStorage.getItem('users') || '{}');
+}
+function saveUsers(users) {
+  localStorage.setItem('users', JSON.stringify(users));
+}
+
+function doRegister() {
+  var u = document.getElementById('regUser').value.trim();
+  var p = document.getElementById('regPass').value.trim();
+  if (!u || !p) { alert('Введите логин и пароль'); return; }
+  var users = loadUsers();
+  if (users[u]) { alert('Такой логин уже занят'); return; }
+  users[u] = { password: p };
+  saveUsers(users);
+  alert('Аккаунт создан! Теперь войдите.');
+}
+
+function doLogin() {
+  var u = document.getElementById('loginUser').value.trim();
+  var p = document.getElementById('loginPass').value.trim();
+  var users = loadUsers();
+  if (!users[u] || users[u].password !== p) {
+    alert('Неверный логин или пароль');
+    return;
+  }
+  currentUser = u;
+  document.getElementById('whoUser').textContent = u;
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('goalScreen').classList.remove('hidden');
+  showGoalView();
+}
+
+function doLogout() {
+  currentUser = null;
+  document.getElementById('authScreen').classList.remove('hidden');
+  document.getElementById('goalScreen').classList.add('hidden');
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+function resetAll() {
+  if (confirm('Удалить всех пользователей? Копилки тоже пропадут.')) {
+    localStorage.clear();
+    alert('Всё очищено.');
+  }
+}
+
+function loadGoal() {
+  if (!currentUser) return null;
+  var g = localStorage.getItem('goal_' + currentUser);
+  return g ? JSON.parse(g) : null;
+}
+function saveGoal(goal) {
+  localStorage.setItem('goal_' + currentUser, JSON.stringify(goal));
+}
+
+function showGoalView() {
+  var goal = loadGoal();
+  if (!goal) {
+    document.getElementById('goalForm').classList.remove('hidden');
+    document.getElementById('goalView').classList.add('hidden');
+    return;
+  }
+  document.getElementById('goalForm').classList.add('hidden');
+  document.getElementById('goalView').classList.remove('hidden');
+
+  document.getElementById('goalTitle').textContent = goal.title;
+  document.getElementById('savedAmount').textContent = goal.saved + ' ₽';
+  document.getElementById('targetAmount').textContent = goal.target + ' ₽';
+
+  var pct = goal.target > 0 ? Math.min(100, (goal.saved / goal.target) * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  var rem = goal.target - goal.saved;
+  if (rem <= 0) {
+    document.getElementById('remaining').textContent = 'Цель достигнута! 🎉';
+  } else {
+    document.getElementById('remaining').textContent = 'Осталось накопить: ' + rem + ' ₽';
+  }
+
+  if (goal.photo) {
+    document.getElementById('goalPhoto').innerHTML =
+      '<img src="' + goal.photo + '"><div class="caption">' + goal.caption + '</div>';
+  } else {
+    document.getElementById('goalPhoto').innerHTML = '';
+  }
+
+  var list = document.getElementById('historyList');
+  if (goal.history && goal.history.length > 0) {
+    var html = '';
+    for (var i = goal.history.length - 1; i >= 0; i--) {
+      var h = goal.history[i];
+      var date = new Date(h.date).toLocaleString('ru-RU');
+      var cls = h.type === 'add' ? 'add' : 'sub';
+      var sign = h.type === 'add' ? '+' : '−';
+      html += '<div class="history-item"><span class="' + cls + '">' + sign + h.amount + ' ₽</span><span>' + date + '</span></div>';
+    }
+    list.innerHTML = html;
+  } else {
+    list.innerHTML = '<p style="color:#94a3b8">Пока операций не было</p>';
+  }
+}
+
+function createGoal() {
+  var title = document.getElementById('title').value.trim();
+  var target = parseFloat(document.getElementById('target').value);
+  var caption = document.getElementById('caption').value.trim();
+  var fileInput = document.getElementById('photo');
+
+  if (!title) { alert('Напиши, на что копишь'); return; }
+  if (!target || target <= 0) { alert('Сумма должна быть больше 0'); return; }
+  if (fileInput.files.length > 0 && !caption) {
+    alert('Раз есть фото — напиши подпись');
+    return;
+  }
+
+  function finish(photoData) {
+    var goal = {
+      title: title,
+      target: target,
+      saved: 0,
+      photo: photoData,
+      caption: caption,
+      history: []
+    };
+    saveGoal(goal);
+    showGoalView();
+  }
+
+  if (fileInput.files.length > 0) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var maxW = 800;
+        var scale = Math.min(1, maxW / img.width);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(fileInput.files[0]);
+  } else {
+    finish(null);
+  }
+}
+
+function addMoney() {
+  var amt = parseFloat(document.getElementById('opAmount').value);
+  if (!amt || amt <= 0) { alert('Введи сумму больше 0'); return; }
+  var goal = loadGoal();
+  goal.saved += amt;
+  goal.history.push({ type: 'add', amount: amt, date: Date.now() });
+  saveGoal(goal);
+  document.getElementById('opAmount').value = '';
+  showGoalView();
+}
+
+function subMoney() {
+  var amt = parseFloat(document.getElementById('opAmount').value);
+  if (!amt || amt <= 0) { alert('Введи сумму больше 0'); return; }
+  var goal = loadGoal();
+  goal.saved -= amt;
+  goal.history.push({ type: 'sub', amount: amt, date: Date.now() });
+  saveGoal(goal);
+  document.getElementById('opAmount').value = '';
+  showGoalView();
+}
+
+function resetGoal() {
+  if (confirm('Удалить копилку?')) {
+    localStorage.removeItem('goal_' + currentUser);
+    showGoalView();
+  }
+}
+</script>
+
+</body>
+</html>
